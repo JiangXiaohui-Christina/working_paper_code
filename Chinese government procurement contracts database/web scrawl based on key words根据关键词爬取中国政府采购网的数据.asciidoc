@@ -1,0 +1,214 @@
++*In[ ]:*+
+[source, ipython3]
+----
+# -*- coding: utf-8 -*-
+
+
+from selenium import webdriver
+
+import urllib.parse
+import time
+
+import bs4
+import openpyxl
+from bs4 import BeautifulSoup
+from selenium import webdriver
+browser = webdriver.Chrome(executable_path = '/Users/jiang/OneDrive - HKUST Connect/Research/Smart City/chromedriver')
+#将只提取中标公告的部分改为所有类别
+browser.get('http://search.ccgp.gov.cn/bxsearch?searchtype=2&page_index=1&bidSort=0&buyerName=&projectId=&pinMu=0&bidType=0&dbselect=bidx&kw=&start_time=2021%3A07%3A29&end_time=2021%3A08%3A05&timeType=2&displayZone=&zoneId=&pppStatus=0&agentName=')
+
+
+#获取相应的网页链接
+def get_page_count(key,timeType):
+    key = urllib.parse.quote(key)
+
+    option = webdriver.ChromeOptions()
+    option.add_argument('headless')
+    driver = webdriver.Chrome(options=option)
+    url1 = 'http://search.ccgp.gov.cn/bxsearch?searchtype=2&page_index=1&bidSort=0&buyerName=&projectId=&pinMu=0&bidType=7&dbselect=bidx&'
+    url2 = 'kw={0}&timeType={1}&displayZone=&zoneId=&pppStatus=0&agentName='.format(key, timeType)
+    url = url1 + url2
+    driver.get(url)
+    web_content = BeautifulSoup(driver.page_source, "lxml")
+
+    mydata = web_content.find('p', class_='pager')
+
+    pager_json = ''
+    for child in mydata.children:
+        if child.string:
+            _ = child.string.strip()
+            if _.startswith('Pager'):
+                pager_json = _
+
+    count = 0
+    if pager_json:
+        pager_json = pager_json.replace('Pager(', ' ')
+        pager_json = pager_json.replace(');', ' ')
+        pager_json = pager_json.replace('{', ' ')
+        pager_json = pager_json.replace('}', ' ')
+
+        elements = pager_json.split(',')
+
+        for e in elements:
+            e = e.strip()
+            if e.startswith('size'):
+                size = e.split(':')[1].strip()
+                count=size
+
+    return int(count)
+
+
+
+## Excel的处理
+wb = openpyxl.Workbook()
+wb = openpyxl.load_workbook('/Users/jiang/OneDrive - HKUST Connect/Research/Smart City/mydata.xlsx')
+sh = wb['Sheet1']
+max_row = sh.max_row
+max_cow = sh.max_column
+
+option = webdriver.ChromeOptions()
+option.add_argument('headless')
+driver = webdriver.Chrome(options=option)
+
+
+## 根据相应的关键词提取合同 
+# keys = "区块链、Blockchain、区块、分布式、可信、共享、加密、密码学、去中心化、不可篡改、共识、算法、验证、可追溯、联盟链、私有链、公有链、上链、链上、链下、链路、跨链、溯源、账本存储、证书密钥、数据存证、可信数据、可信存证、可信认证、数据安全、多方验证、多方计算、可信计算、安全计算、智能合同、智能合约、电子合同、授权、数字物权、数字商品、物联网、云服务、数字经济、分布式能源、分布式电力、分布式光伏、智慧、智能、智能平台、智慧平台、信息化、互联网 +、互联网平台、人工智能、深度学习、工业机器人、信息化平台、机器学习、图像识别、语言识别、自主决策"
+
+# key_list = keys.split("、")
+
+# for key in key_list:
+#     timeType = 5
+#     try:
+#         count = get_page_count(key, timeType)
+#     except:
+#         info = '关键字{}查询出现异常，跳过此关键词'.format(key)
+#         print(info)
+#         continue
+
+#     time.sleep(5)
+
+    if count > 200:
+       # 如果分页很多，则截取一部分
+        count = 200
+    else:
+
+        encode_key = urllib.parse.quote(key)
+
+        for i in list(range(1, count)):
+
+            url1 = 'http://search.ccgp.gov.cn/bxsearch?searchtype=2&page_index={0}&bidSort=0&buyerName=&projectId=&pinMu=0&bidType=7&dbselect=bidx&'.format(
+                i)
+            url2 = 'kw={0}&timeType={1}&displayZone=&zoneId=&pppStatus=0&agentName='.format(encode_key, timeType)
+            url = url1 + url2
+
+            print(url)
+
+            # 循环体开始
+            driver.get(url)
+            web_content = BeautifulSoup(driver.page_source, "lxml")
+
+
+            mydata = web_content.find('ul', class_='vT-srch-result-list-bid')
+
+            for child in mydata.children:
+
+                if type(child) is bs4.element.Tag:
+                    map = dict()
+                    status = child.find('strong').text.strip()
+                    title = child.find_all('a')[0].text.strip()
+                    href = child.find_all('a')[0]['href']
+                    area = child.find_all('a')[1].text.strip()
+                    span = child.find('span').text.strip()
+                    if status == '中标公告':
+                        map['中标标题'] = title
+                        map['关键词'] = key
+
+                        url = href
+
+                        map['地区'] = area
+
+                        # 采购人
+                        buyer = span.split('|')[1].strip()
+
+                        map['采购单位'] = buyer.split("：")[1]
+
+                        purchase = map['采购单位']
+
+                        if len(purchase.split('市')) > 1:
+                            map['城市'] = (purchase.split('市')[0] + "市")
+                        else:
+                            map['城市'] = ''
+
+                        data_time = span.split('|')[0].strip()
+
+                        map['年份'] = data_time[0:4]
+                        map['link'] = href
+
+                        for purchase in span.split('|')[2].split('\n'):
+                            # 代理机构
+                            if purchase.strip() and purchase.strip() != '中标公告':
+                                broker = purchase.strip()
+                                map['代理公司'] = broker.split('：')[1]
+
+                        map['日期'] = data_time[5:7] + "月" + data_time[8:10] + "日"
+
+                        driver.get(url)
+                        web_content = BeautifulSoup(driver.page_source, "lxml")
+                        mydata = web_content.find('div', class_='vF_detail_content')
+
+                        if mydata is None:
+                            continue
+
+                        _ = mydata.prettify()
+                        purchase = BeautifulSoup(_, "lxml")
+
+                        y = purchase.get_text()
+
+                        for line in y.split('\n'):
+                            if line:
+                                line = line.strip()
+
+                                if ('中标' in line and '金额' in line):
+                                    if len(line.split('：')) > 1:
+                                        map['中标金额'] = line.split('：')[1]
+
+                                if (line.startswith('中标单位：') or line.startswith('供应商名称：')):
+                                    if len(line.split('：')) > 1:
+                                        map['中标单位'] = line.split('：')[1]
+                    if '中标金额' not in map.keys():
+                        map['中标金额'] = ''
+
+                    if '中标单位' not in map.keys():
+                        map['中标单位'] = ''
+
+                    print(map)
+
+                    if len(map['中标金额']) > 60:
+                        map['中标金额'] = ''
+
+                    sh.cell(row=max_row + 1, column=1).value = map['中标标题']
+                    sh.cell(row=max_row + 1, column=2).value = map['关键词']
+                    sh.cell(row=max_row + 1, column=3).value = map['地区']
+                    sh.cell(row=max_row + 1, column=4).value = map['城市']
+                    sh.cell(row=max_row + 1, column=5).value = map['采购单位']
+                    sh.cell(row=max_row + 1, column=6).value = map['年份']
+                    sh.cell(row=max_row + 1, column=7).value = map['link']
+                    sh.cell(row=max_row + 1, column=8).value = map['代理公司']
+                    sh.cell(row=max_row + 1, column=9).value = map['日期']
+                    sh.cell(row=max_row + 1, column=10).value = map['中标金额']
+                    sh.cell(row=max_row + 1, column=11).value = map['中标单位']
+
+                    max_row = max_row + 1
+            # 循环体结束
+
+wb.save("mydata.xlsx")
+wb.close()
+
+----
+
+
++*In[ ]:*+
+[source, ipython3]
+----
+
+----

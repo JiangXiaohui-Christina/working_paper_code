@@ -1,0 +1,263 @@
++*In[ ]:*+
+[source, ipython3]
+----
+# -*- coding: utf-8 -*-
+from os import error
+import twisted.web._newclient
+from urllib.parse import unquote_plus, quote_plus
+import json
+import re
+import idna.core
+import scrapy
+from scrapy import Request, Selector
+from lxml import etree
+import math
+# 以下补丁代码：用于预防有人可能会用 pythonw 执行 scrapy 单脚本时可能会出现的编码问题，如果直接用 python 执行该处则有无皆可。
+# import io, sys; sys.stdout = io.TextIOWrapper(sys.stdout.buffer,encoding='utf-8')
+# 以下补丁代码：用于预防处理 “scrapy(twisted) 对极少数的某些网站返回的不规范 headers 无法处理” 的异常情况
+
+
+def lineReceived(self, line):
+    if line[-1:] == b'\r':
+        line = line[:-1]
+    if self.state == u'STATUS':
+        self.statusReceived(line)
+        self.state = u'HEADER'
+    elif self.state == u'HEADER':
+        if not line or line[0] not in b' \t':
+            if self._partialHeader is not None:
+                _temp = b''.join(self._partialHeader).split(b':', 1)
+                name, value = _temp if len(_temp) == 2 else (_temp[0], b'')
+                self.headerReceived(name, value.strip())
+            if not line:
+                self.allHeadersReceived()
+            else:
+                self._partialHeader = [line]
+        else:
+            self._partialHeader.append(line)
+
+
+twisted.web._newclient.HTTPParser.lineReceived = lineReceived
+# 以下补丁代码：解决 idna 库过于严格，导致带有下划线的 hostname 无法验证通过的异常
+_check_label_bak = idna.core.check_label
+
+
+def check_label(label):
+    try:
+        return _check_label_bak(label)
+    except idna.core.InvalidCodepoint:
+        pass
+
+
+idna.core.check_label = check_label
+
+
+def readtxtfile():
+    filename = os.path.join(os.path.dirname(
+        os.path.realpath('__file__')), 'setting.txt')
+    rows = []
+    with open(filename, 'r', encoding='utf8') as f:
+        for line in f:
+            rows.append(line.strip())
+    return rows
+
+class VSpider(scrapy.Spider):
+    name = 'v'
+
+    custom_settings = {
+        # Do not use automatic cookie caching(set 'dont_merge_cookies' as True in Request.meta is same)
+        'COOKIES_ENABLED': False,
+    }
+    proxy = None  # 'http://127.0.0.1:8888'
+
+    def start_requests(self):
+        def mk_url_headers(companyname):
+            def quote_val(url): return re.sub(r'([\?&][^=&]*=)([^&]*)', lambda i: i.group(1)+quote_plus(
+                unquote_plus(i.group(2), encoding='utf-8'), encoding='utf-8').replace('+', '%2B'), url)
+            url = (
+                'http://open.api.tianyancha.com/services/open/ipr/patents/2.0'
+                '?pubDateBegin=1980-01-01'
+                '&appDateBegin=1980-01-01'
+                '&pageSize=20'
+                '&pubDateEnd=2021-09-01'
+                '&appDateEnd=2021-09-01'
+                '&keyword={}'
+                '&pageNum=1'
+                '&patentType=1'
+            ).format(companyname)
+            url = quote_val(url)
+            headers = {
+                "Host": "open.api.tianyancha.com",
+                # auto delete br encoding. cos requests and scrapy can not decode it.
+                "Accept-Encoding": "gzip, deflate",
+                "Accept": "*/*",
+                "Connection": "keep-alive",
+                "Authorization": "ca5120bb-7fba-4c61-9c8d-4cc7100e4278"
+            }
+            return url, headers
+        rows = readtxtfile()
+
+
+        for companyname in rows:
+            url, headers = mk_url_headers(companyname)
+            meta = {}
+            meta['proxy'] = self.proxy
+            meta['companyname'] = companyname
+            r = Request(
+                url,
+                headers=headers,
+                callback=self.parse,
+                meta=meta,
+            )
+            yield r
+
+    def parse(self, response):
+        companyname = response.meta['companyname']
+        # If you need to parse another string in the parsing function.
+        # use "etree.HTML(text)" or "Selector(text=text)" to parse it.
+        # ps. if you use "etree.HTML(text)" and text startswith '<?xml version="1.0" encoding="utf-8"?>'
+        # pls use "etree.HTML(re.sub(r'^ *<\?xml[^<>]+\?>', '', text))"
+
+        content = response.body.decode("utf-8", errors="strict")
+        jsondata = json.loads(content[content.find('{'):content.rfind('}')+1])
+        # total = jsondata['result']['total']
+        try:
+            total = jsondata['result']['total']
+            totalpage = int(math.floor(int(total))/20)+1
+        except:
+            totalpage = 1
+
+        for page in range(1,totalpage+1):
+            newurl = (
+                'http://open.api.tianyancha.com/services/open/ipr/patents/2.0'
+                '?pubDateBegin=1980-01-01'
+                '&appDateBegin=1980-01-01'
+                '&pageSize=20'
+                '&pubDateEnd=2021-09-01'
+                '&appDateEnd=2021-09-01'
+                '&keyword={}'
+                '&pageNum={}'
+                '&patentType=2'
+            ).format(companyname,page)
+
+            headers = {
+                "Host": "open.api.tianyancha.com",
+                # auto delete br encoding. cos requests and scrapy can not decode it.
+                "Accept-Encoding": "gzip, deflate",
+                "Accept": "*/*",
+                "Connection": "keep-alive",
+                "Authorization": "ca5120bb-7fba-4c61-9c8d-4cc7100e4278"
+            }
+
+            meta = {}
+
+            meta['companyname'] = companyname
+            meta['page'] = page
+
+            r = Request(
+                newurl,
+                headers=headers,
+                callback=self.detail,
+                meta=meta,
+                dont_filter = True
+            )
+            yield r
+    
+    def detail(self,response):
+        companyname = response.meta['companyname']
+        page = response.meta['page']
+        content = response.body.decode("utf-8", errors="strict")
+        jsondata = json.loads(content[content.find('{'):content.rfind('}')+1])
+        total = jsondata['result']['total']
+
+        for i in jsondata['result']['items']:
+            d = {}
+            d['total'] = total
+            d['page'] = page
+            d['companyname'] = companyname
+            d["pdfPath"] = i.get("pdfPath")
+            d["searchType"] = i.get("searchType")
+            d["_type"] = i.get("_type")
+            d["grantDate"] = i.get("grantDate")
+            d["applicantName"] = i.get("applicantName")
+            d["instrPath"] = i.get("instrPath")
+            d["uni"] = i.get("uni")
+            d["claimsPath"] = i.get("claimsPath")
+            d["grantNumber"] = i.get("grantNumber")
+            d["connList"] = i.get("connList")               # []
+            d["patentStatus"] = i.get("patentStatus")           # 公开
+            d["patentType"] = i.get("patentType")             # 发明专利
+            d["postCode"] = i.get("postCode")               # 100085
+            d["_id"] = i.get("id")                     # 55524984
+            d["cat"] = i.get("cat")                    # 计算；推算；计数;
+            d["mainCatNum"] = i.get("mainCatNum")             # G06T11/60
+            d["pubDate"] = i.get("pubDate")                # 2019-12-27
+            d["applicationPublishTime"] = i.get(
+                "applicationPublishTime")  # 2019-12-27
+            d["applicationTime"] = i.get("applicationTime")        # 2019-08-12
+            d["agent"] = i.get("agent")                  # 北京百度网讯科技有限公司
+            d["applicantname"] = i.get("applicantname")          # 北京百度网讯科技有限公司
+            d["pubnumber"] = i.get("pubnumber")              # CN110619670A
+            d["applicationPublishNum"] = i.get(
+                "applicationPublishNum")  # CN110619670A
+            d["eventTime"] = i.get("eventTime")              # 1577376000000
+            d["createTime"] = i.get("createTime")             # 1578240000000
+            # 常元章; 康洋; 王博; 洪智滨; 朱胜贤; 韩钧宇; 马晓昕; 刘经拓
+            d["inventor"] = i.get("inventor")
+            # 北京鸿德海业知识产权代理事务所（普通合伙）
+            d["agency"] = i.get("agency")
+            d["patentNum"] = i.get("patentNum")              # CN201910738283.2
+            d["appnumber"] = i.get("appnumber")              # CN201910738283.2
+            # 北京市海淀区上地十街10号百度大厦2层
+            d["address"] = i.get("address")
+            d["title"] = i.get("title")                  # 人脸互换方法、装置、计算机设备及存储介质
+            # 人脸互换方法、装置、计算机设备及存储介质
+            d["patentName"] = i.get("patentName")
+            d["allCatNum"] = i.get("allCatNum")              # ["G06T11/60"]
+            # cddfe8ddf3df49bf4f740a95a36107cf
+            d["uuid"] = i.get("uuid")
+            # [{'priorityNumber': '', 'priorityDate': ''}]
+            d["priorityInfo"] = i.get("priorityInfo")
+            # ["http://static.tianyancha.com/patent/abstractPic/CN/A/110/6
+            d["imgUrl"] = i.get("imgUrl")
+            # 19/CN110619670A.png"]
+            # [{'date': '2020-01-21', 'detail': '实质审查的生效', 'status': '实质审查
+            d["lawStatus"] = i.get("lawStatus")
+            # 的生效'}, {'date': '2019-12-27', 'detail': '公开', 'status': '公布'
+            # }]
+            # 本发明公开了人脸互换方法、装置、计算机设备及存储介质，其中方法可包括：针对包含M张人脸的待处理图像中每两张需要进行人脸互
+            d["abstracts"] = i.get("abstracts")
+            # 换的第一人脸和第二人脸，M为大于一的正整数，分别进行以下处理：分别提取出第一人脸和第二人脸中的人脸关键点；根据提取出的人
+            # 脸关键点分别对第一人脸和第二人脸进行三角剖分；基于三角剖分结果对第一人脸和第二人脸进行人脸互换。本发明所述方案的实现方式
+            # 更为灵活，并提升了换脸效果，增强了互动性和趣味性，且具有很高的准确性等。
+
+            yield d
+
+
+# 配置在单脚本情况也能爬取的脚本的备选方案，使用项目启动则下面的代码无效
+if __name__ == '__main__':
+    import os
+    import time
+    from scrapy.crawler import CrawlerProcess
+    timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())  # 年月日_时分秒
+    filename = '专利3_{}.csv'.format(timestamp)  # 这是输出文件名字（解开 'FEED_URI' 配置注释生效）
+    jobdir = 'JOBDIR/vyp3nzatO1CZ'          # 这是队列信息地址（解开 'JOBDIR'   配置注释生效）
+
+    p = CrawlerProcess({
+        'TELNETCONSOLE_ENABLED':    False,        # 几乎没人使用到这个功能，直接关闭提高爬虫启动时间
+        'MEDIA_ALLOW_REDIRECTS':    error,         # 允许图片下载地址重定向，存在图片下载需求时，请尽量使用该设置
+        # DEBUG , INFO , WARNING , ERROR , CRITICAL
+        'LOG_LEVEL':                'DEBUG',
+        # 'JOBDIR':                   jobdir,     # 解开注释则增加断点续爬功能
+                                                  # 任务队列、任务去重指纹、任务状态存储空间(简单来说就是一个文件夹)
+        'FEED_URI':                 filename,   # 下载数据到文件
+        'FEED_EXPORT_ENCODING':     'utf-8',    # 在某种程度上，约等于 ensure_ascii=False 的配置选项
+        'FEED_FORMAT':              'csv',     # 下载的文件格式，不配置默认以 jsonlines 方式写入文件，
+                                                #   支持的格式 json, jsonlines, csv, xml, pickle, marshal
+        'DOWNLOAD_TIMEOUT':         8,          # 全局请求超时，默认180。也可以在 meta 中配置单个请求的超时( download_timeout )
+        # 'DOWNLOAD_DELAY':           0.5,          # 全局下载延迟，这个配置相较于其他的节流配置要直观很多
+    })
+    p.crawl(VSpider)
+    p.start()
+
+----

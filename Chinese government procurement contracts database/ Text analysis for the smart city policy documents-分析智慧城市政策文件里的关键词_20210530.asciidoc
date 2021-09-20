@@ -1,0 +1,233 @@
++*In[2]:*+
+[source, ipython3]
+----
+import pandas as pd
+import numpy as np
+
+df = pd.read_excel (r'/Users/jiang/policy1.xlsx',sheet_name='Sheet1',header=0, names = None)
+
+----
+
+
++*In[3]:*+
+[source, ipython3]
+----
+print(df.head())
+----
+
+
++*Out[3]:*+
+----
+                                                link  \
+0  ﻿http://www.bailuzhiku.com/policy/detail/20171...   
+1  ﻿http://www.bailuzhiku.com/policy/detail/20161...   
+2  ﻿http://www.bailuzhiku.com/policy/detail/20161...   
+3  ﻿http://www.bailuzhiku.com/policy/detail/20150...   
+4  ﻿http://www.bailuzhiku.com/policy/detail/20140...   
+
+                                               title    publish  \
+0              国家测绘地理信息局关于加快推进智慧城市时空大数据与云平台建设试点工作的通知 2017-11-28   
+1  关于组织开展新型智慧城市评价工作务实推动新型智慧城市健康快速发展的通知(发改办高技〔2016... 2016-11-28   
+2  国家发展改革委办公厅、中央网信办秘书局、国家标准委办公室关于组织开展新型智慧城市评价工作务实... 2016-11-22   
+3                           关于推进数字城市向智慧城市转型升级有关工作的通知 2015-05-07   
+4  国家发展和改革委员会、工业和信息化部、科学技术部等八部门关于印发促进智慧城市健康发展的指导意... 2014-08-27   
+
+                    branch               _id  \
+0                国家测绘地理信息局      国测发[2017]15号   
+1      国家发展改革委办公厅,中央网信办秘书局               NaN   
+2  国家发展和改革委员会/国家标准化管理委员...  发改办高技[2016]2476号   
+3                国家测绘地理信息局     国测国发〔2015〕11号   
+4  科学技术部工业和信息化部国家发展和改革委...   发改高技[2014]1770号   
+
+                                             content  length  
+0  \n                            \n              ...   25908  
+1  \n                            \n              ...   24179  
+2  \n                            \n              ...   24794  
+3  \n                            \n              ...   24542  
+4  \n                            \n              ...   26599  
+----
+
+
++*In[4]:*+
+[source, ipython3]
+----
+print(df.columns.ravel())
+----
+
+
++*Out[4]:*+
+----
+['link' 'title' 'publish' 'branch' '_id' 'content' 'length']
+----
+
+
++*In[5]:*+
+[source, ipython3]
+----
+import nltk
+op_N = 4
+#if not necessary all lower
+a = df['中标标题'].str.lower().str.cat(sep=' ')
+words = nltk.tokenize.word_tokenize(a)
+word_dist = nltk.FreqDist(words)
+print (word_dist)
+----
+
+
++*Out[5]:*+
+----
+
+    ---------------------------------------------------------------------------
+
+    KeyError                                  Traceback (most recent call last)
+
+    ~/opt/anaconda3/lib/python3.8/site-packages/pandas/core/indexes/base.py in get_loc(self, key, method, tolerance)
+       2894             try:
+    -> 2895                 return self._engine.get_loc(casted_key)
+       2896             except KeyError as err:
+
+
+    pandas/_libs/index.pyx in pandas._libs.index.IndexEngine.get_loc()
+
+
+    pandas/_libs/index.pyx in pandas._libs.index.IndexEngine.get_loc()
+
+
+    pandas/_libs/hashtable_class_helper.pxi in pandas._libs.hashtable.PyObjectHashTable.get_item()
+
+
+    pandas/_libs/hashtable_class_helper.pxi in pandas._libs.hashtable.PyObjectHashTable.get_item()
+
+
+    KeyError: '中标标题'
+
+    
+    The above exception was the direct cause of the following exception:
+
+
+    KeyError                                  Traceback (most recent call last)
+
+    <ipython-input-5-9ca0c60d0ade> in <module>
+          2 op_N = 4
+          3 #if not necessary all lower
+    ----> 4 a = df['中标标题'].str.lower().str.cat(sep=' ')
+          5 words = nltk.tokenize.word_tokenize(a)
+          6 word_dist = nltk.FreqDist(words)
+
+
+    ~/opt/anaconda3/lib/python3.8/site-packages/pandas/core/frame.py in __getitem__(self, key)
+       2900             if self.columns.nlevels > 1:
+       2901                 return self._getitem_multilevel(key)
+    -> 2902             indexer = self.columns.get_loc(key)
+       2903             if is_integer(indexer):
+       2904                 indexer = [indexer]
+
+
+    ~/opt/anaconda3/lib/python3.8/site-packages/pandas/core/indexes/base.py in get_loc(self, key, method, tolerance)
+       2895                 return self._engine.get_loc(casted_key)
+       2896             except KeyError as err:
+    -> 2897                 raise KeyError(key) from err
+       2898 
+       2899         if tolerance is not None:
+
+
+    KeyError: '中标标题'
+
+----
+
+
++*In[26]:*+
+[source, ipython3]
+----
+import jieba
+import csv
+txt = open("/Users/jiang/Desktop/Title.csv", 'rt'，encoding = 'UTF-8').read() 
+Excel = open("baoGao.csv", 'w', newline='') 
+writ = csv.writer(Excel)  
+writ.writerow(['名称', '出现次数'])  
+words = jieba.lcut(txt)  
+counts = {}  
+for word in words:
+    if len(word) <= 1:
+        continue
+    else:
+        counts[word] = counts.get(word, 0) + 1 
+item = list(counts.items()) 
+item.sort(key=lambda x: x[1], reverse=True)  
+for i in range(10):
+    writ.writerow(item[i])  
+----
+
+
++*Out[26]:*+
+----
+
+      File "<ipython-input-26-7e0359772f04>", line 3
+        txt = open("/Users/jiang/Desktop/Title.csv", 'rt'，encoding = 'UTF-8').read()
+                                                                 ^
+    SyntaxError: invalid character in identifier
+
+
+----
+
+
++*In[8]:*+
+[source, ipython3]
+----
+with open('/Users/jiang/data_20210530175441.txt') as f:    #conding看起来是对的，但是有一定的问题因为
+    print(f)
+----
+
+
++*Out[8]:*+
+----
+<_io.TextIOWrapper name='/Users/jiang/data_20210530175441.txt' mode='r' encoding='UTF-8'>
+----
+
+
++*In[10]:*+
+[source, ipython3]
+----
+import jieba
+txt = open("/Users/jiang/data_20210530175441.txt", "r", encoding='UTF-8').read()
+words  = jieba.lcut (txt)
+counts = {}
+for word in words:
+    if len(word) == 1:
+        continue
+    else:
+        counts[word] = counts.get(word,0) + 1
+items = list(counts.items())
+items.sort(key=lambda x:x[1], reverse=True)
+for i in range(10):
+    word, count = items[i]
+    print("{0:<10}{1:>5}".format(word, count))
+
+----
+
+
++*Out[10]:*+
+----
+Building prefix dict from the default dictionary ...
+Dumping model to file cache /var/folders/t5/r43bhpq51z30ksfqnz5t_pf40000gn/T/jieba.cache
+Loading model cost 0.715 seconds.
+Prefix dict has been built successfully.
+
+城市          844
+智慧          485
+建设          441
+发展          209
+工作          200
+国家          199
+测绘          193
+地理信息        191
+信息          188
+试点          179
+----
+
+
++*In[ ]:*+
+[source, ipython3]
+----
+
+----

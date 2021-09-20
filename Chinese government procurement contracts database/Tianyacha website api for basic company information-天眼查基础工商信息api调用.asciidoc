@@ -1,0 +1,118 @@
++*In[ ]:*+
+[source, ipython3]
+----
+
+#coding=utf-8
+
+# 接口请求示例为：http://open.api.tianyancha.com/services/open/ipr/copyReg/2.0?keyword=北京百度网讯科技有限公司&pageNum=1&pageSize=20
+
+
+import ast
+import datetime
+import hashlib
+import json
+import os
+import time
+
+import pandas as pd
+import requests
+
+filetime = time.strftime("%Y%m%d%H%M%S")
+
+
+def timestamp_convert_time(timeStamp):
+    timeStamp = 1629216000000/1000
+    timeArray = time.localtime(timeStamp)
+    otherStyleTime = time.strftime("%Y-%m-%d", timeArray)
+    return otherStyleTime
+    
+def readtxtfile():
+    filename = os.path.join(os.path.dirname(os.path.realpath('__file__')), 'setting.txt')
+    rows = []
+    with open(filename, 'r', encoding='utf8') as f:
+        for line in f:
+            rows.append(line.strip())
+    return rows
+
+
+
+#  token可以从 数据中心 -> 我的接口 中获取
+token = "ca5120bb-7fba-4c61-9c8d-4cc7100e4278"
+encode = 'utf-8'
+import math
+rows = readtxtfile()
+for companyname in rows[0:1]:
+    # companyname = '昆山华东信息科技有限公司'
+    page =1
+    url_i = f"http://open.api.tianyancha.com/services/open/ipr/copyReg/2.0?keyword={companyname}&pageNum={page}&pageSize=20"
+    headers = {'Authorization': token}
+    response_i = requests.get(url_i, headers=headers)
+    mydata = json.loads(response_i.text)
+
+
+    try:
+        totalpage = int(math.floor(int(mydata.get('result').get('total')))/20)+1
+    except:
+        totalpage =1
+
+    # for page in range(1,totalpage+1):
+    for page in range(1,2):
+        time.sleep(0.3)
+        try:
+            url_i = f"http://open.api.tianyancha.com/services/open/ipr/copyReg/2.0?keyword={companyname}&pageNum={page}&pageSize=20"
+            headers = {'Authorization': token}
+            response_i = requests.get(url_i, headers=headers)
+            mydata = json.loads(response_i.text)
+            total = mydata.get('result').get('total')
+            datas = mydata.get('result').get('items')
+
+
+            df = pd.DataFrame(datas)
+            df['companyname'] = companyname
+            df['total'] = total
+
+            regtime_ = df["regtime"]
+            publishtime_ = df["publishtime"]
+            eventTime_ = df["eventTime"]
+
+            regtime = []
+            for x in regtime_:
+                regtime.append(timestamp_convert_time(x))
+            publishtime = []
+            for x in publishtime_:
+                publishtime.append(timestamp_convert_time(x))
+
+            eventTime = []
+            for x in eventTime_:
+                eventTime.append(timestamp_convert_time(x))
+
+            df['regtime'] = regtime
+            df['publishtime'] = publishtime
+            df['eventTime'] = eventTime
+
+            headers = ['regtime', 'connList', 'searchType', '_type', 'simplename', 'catnum',
+                        'version', 'uni', 'publishtime', 'eventTime', 'authorNationality',
+                        'regnum', 'id', 'fullname', 'total']
+
+            df.drop('searchType', axis=1, inplace=True)
+            df.drop('_type', axis=1, inplace=True)
+            df.rename(columns={'regtime': u'登记日期',
+                                'connList': u'跳转到天眼查链接',
+                                'simplename': u'简称',
+                                'catnum': u'分类号',
+                                'version': u'版本号',
+                                'uni': u'唯一标志符',
+                                'authorNationality': u'著作权人',
+                                'regnum': u'登记号',
+                                'uni': u'唯一标志符',
+                                'id': u'对应表id',
+                                'fullname': u'全称',
+                        'publishtime': u'首次发表日期',
+                                'eventTime': u'批准日期'}, inplace=True)
+
+                # print(df)
+            df.to_csv(f'data_{filetime}.csv', mode='a',
+                        header=None, index=None)
+        except:
+            print(companyname,page)
+----

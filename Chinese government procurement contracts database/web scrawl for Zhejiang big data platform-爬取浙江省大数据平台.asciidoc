@@ -1,0 +1,155 @@
++*In[53]:*+
+[source, ipython3]
+----
+import os
+import sys
+import datetime as dt
+import time
+import json
+import re
+import numpy as np
+import pandas as pd
+from urllib.request import quote
+from selenium import webdriver   #比较适合动态网页的信息爬取
+from selenium.webdriver.chrome.options import Options
+import openpyxl
+
+
+chrome_options = Options()
+chrome_options.add_argument('--headless') #在做爬虫时，通常是不需要打开浏览器的，只需要使用浏览器的内核，因此可以使用Chrome的无头模式
+chrome_options.add_argument('--disable-gpu') #禁用GPU加速
+# 有形和无形
+driver = webdriver.Chrome(options=chrome_options)
+# driver = webdriver.Chrome()
+
+
+driver.get('http://data.zjzwfw.gov.cn/jdop_front/channal/app_service.do') #第一页pageindex是3
+time.sleep(2)
+
+
+    
+results = []
+pageIndex = 4
+while True and pageIndex < 9:
+    try:
+        for i in range(2, 12):  #i=2-11
+            obj = driver.find_element_by_xpath('/html/body/div[1]/div[2]/div[2]/div/div[1]/div[1]/div[2]/div[1]/h3/a' %i)
+            name = obj.text
+            cate = driver.find_element_by_xpath('//*[@id="front_list"]/div[1]/div[2]/div/div[2]/p[2]/span[1]/span').text
+            url = obj.get_attribute('href')
+            results.append([name, cate, url])
+
+
+#         for i in range(3):  #i=0,1,2，做了三次，这种做一次就够了，也可能不需要
+#             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);") #滚动到页面底部
+#             time.sleep(1)
+
+
+        '//*[@id="Paging_08543488277753775"]/ul/li[4]'
+        '//*[@id="Paging_03408946335976055"]/ul/li[4]'
+        '/html/body/div[1]/div[2]/div[3]/div/div/form/div/div/div[2]/div/ul/li[4]'
+        '/html/body/div[2]/div[2]/div[3]/div/div/form/div/div/div[2]/div/ul/li[%d]'
+        driver.find_element_by_xpath('/html/body/div[1]/div[2]/div[3]/div/div/form/div/div/div[2]/div/ul/li[%d]' %pageIndex).click() #pageindex=4的时候用，第二页
+        pageIndex += 1 #pageIndex = pageIndex+1
+        time.sleep(1) #第二页进行加载的时间
+    except Exception as e: #防止报错，如果报错了就打印出来e
+        print(e)
+        # time.sleep()
+        break
+
+print("爬取APP个数 %d" % len(results) )
+
+for ls in results:   #列举results中的所有元素
+    try:
+        driver.get(ls[2])
+#         name = driver.find_element_by_xpath('//*[@id="barrierfree_container"]/div[3]/div[2]/div[2]/table/tbody/tr[1]/td[1]/span').text
+#         danwei = driver.find_element_by_xpath('//*[@id="work_yy"]').text
+#         counts = driver.find_element_by_xpath('//*[@id="barrierfree_container"]/div[3]/div[2]/div[2]/table/tbody/tr[4]/td[2]/span').text
+#         industry = driver.find_element_by_xpath('//*[@id="barrierfree_container"]/div[3]/div[2]/div[2]/table/tbody/tr[2]/td[1]/span').text
+#         APP = driver.find_element_by_xpath('//*[@id="barrierfree_container"]/div[3]/div[2]/div[2]/table/tbody/tr[3]/td[1]').text
+#         time = driver.find_element_by_xpath('//*[@id="barrierfree_container"]/div[3]/div[2]/div[2]/table/tbody/tr[4]/td[1]').text
+        data = driver.find_element_by_xpath('//*[@id="name_yy"]').text
+#         developer = driver.find_element_by_xpath('//*[@id="barrierfree_container"]/div[3]/div[2]/div[2]/table/tbody/tr[3]/td[2]/span').text
+        print(data)
+        time.sleep(1.5)
+    except:
+        pass
+
+driver.quit()
+----
+
+
++*Out[53]:*+
+----
+Message: no such element: Unable to locate element: {"method":"xpath","selector":"//*[@id="front_list"]/div[1]/div[10]/div/div[2]/p[1]/a"}
+  (Session info: headless chrome=90.0.4430.212)
+
+爬取APP个数 48
+市场监督
+市场监督
+市场监督
+市场监督
+市场监督
+市场监督
+市场监督
+市场监督
+市场监督
+市场监督
+市场监督
+市场监督
+----
+
+
++*In[24]:*+
+[source, ipython3]
+----
+context=[name,danwei,counts]
+----
+
+
++*In[29]:*+
+[source, ipython3]
+----
+df = pd.DataFrame(context)
+----
+
+
++*In[34]:*+
+[source, ipython3]
+----
+df1 = pd.DataFrame(pd.read_excel('123.xlsx'))
+----
+
+
++*In[32]:*+
+[source, ipython3]
+----
+import os
+cwd = os.getcwd()
+print("Current working directory: {0}".format(cwd))
+----
+
+
++*Out[32]:*+
+----
+Current working directory: /Users/jiang
+----
+
+
++*In[39]:*+
+[source, ipython3]
+----
+writer = pd.ExcelWriter('123.xlsx',engine='openpyxl')
+book=load_workbook('123.xlsx')
+writer.book = book
+writer.sheets = dict((ws.title, ws) for ws in book.worksheets) 
+df.to_excel(writer, sheet_name='aa', index=False, header=False)#将数据写入excel中的aa表,从第一个空行开始写
+writer.save()#保存
+----
+
+
++*In[ ]:*+
+[source, ipython3]
+----
+
+----
